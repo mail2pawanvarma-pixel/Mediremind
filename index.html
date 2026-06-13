@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MediRemind - Medicine Reminder</title>
+  <style>
+    :root {
+      --primary: #4f46e5;
+      --success: #10b981;
+      --danger: #ef4444;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
+      min-height: 100vh;
+      padding: 16px;
+    }
+    .container {
+      max-width: 800px;
+      margin: 0 auto;
+      background: white;
+      border-radius: 16px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+      overflow: hidden;
+    }
+    header {
+      background: var(--primary);
+      color: white;
+      padding: 20px;
+      text-align: center;
+    }
+    nav {
+      display: flex;
+      border-bottom: 1px solid #e5e7eb;
+    }
+    .tab {
+      flex: 1;
+      padding: 16px;
+      text-align: center;
+      cursor: pointer;
+      font-weight: 600;
+    }
+    .tab.active {
+      border-bottom: 3px solid var(--primary);
+      color: var(--primary);
+    }
+    .content {
+      padding: 20px;
+      min-height: 60vh;
+    }
+    input, select, button {
+      padding: 12px;
+      border: 1px solid #d1d5db;
+      border-radius: 8px;
+      margin-bottom: 12px;
+      width: 100%;
+    }
+    button {
+      background: var(--primary);
+      color: white;
+      border: none;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    button:hover { opacity: 0.9; }
+    .medicine-card {
+      background: #f8fafc;
+      padding: 16px;
+      border-radius: 12px;
+      margin-bottom: 12px;
+      border-left: 5px solid var(--primary);
+    }
+    .time {
+      font-size: 1.1em;
+      font-weight: bold;
+      color: var(--primary);
+    }
+    .taken {
+      background: #ecfdf5;
+      border-left-color: var(--success);
+    }
+    .log { font-size: 0.9em; color: #64748b; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>💊 MediRemind</h1>
+      <p>Your Personal Medicine Reminder</p>
+    </header>
+
+    <nav>
+      <div class="tab active" onclick="switchTab(0)">Add Medicine</div>
+      <div class="tab" onclick="switchTab(1)">Today</div>
+      <div class="tab" onclick="switchTab(2)">My Medicines</div>
+      <div class="tab" onclick="switchTab(3)">History</div>
+    </nav>
+
+    <div class="content" id="tab0">
+      <h2>Add New Medicine</h2>
+      <input type="text" id="name" placeholder="Medicine Name (e.g. Paracetamol)">
+      <input type="text" id="dosage" placeholder="Dosage (e.g. 500mg)">
+      <input type="time" id="time1">
+      <input type="time" id="time2">
+      <select id="frequency">
+        <option value="daily">Daily</option>
+        <option value="weekly">Weekly</option>
+      </select>
+      <button onclick="addMedicine()">Add Medicine</button>
+    </div>
+
+    <div class="content" id="tab1" style="display:none">
+      <h2>Today's Schedule</h2>
+      <div id="todayList"></div>
+    </div>
+
+    <div class="content" id="tab2" style="display:none">
+      <h2>My Medicines</h2>
+      <div id="medicineList"></div>
+    </div>
+
+    <div class="content" id="tab3" style="display:none">
+      <h2>History</h2>
+      <div id="historyList"></div>
+    </div>
+  </div>
+
+  <script>
+    let medicines = JSON.parse(localStorage.getItem('medicines')) || [];
+    let history = JSON.parse(localStorage.getItem('history')) || [];
+
+    function saveData() {
+      localStorage.setItem('medicines', JSON.stringify(medicines));
+      localStorage.setItem('history', JSON.stringify(history));
+    }
+
+    function addMedicine() {
+      const name = document.getElementById('name').value.trim();
+      const dosage = document.getElementById('dosage').value.trim();
+      const time1 = document.getElementById('time1').value;
+      const time2 = document.getElementById('time2').value;
+      const frequency = document.getElementById('frequency').value;
+
+      if (!name || !time1) {
+        alert("Medicine name and at least one time are required!");
+        return;
+      }
+
+      const times = [time1];
+      if (time2) times.push(time2);
+
+      medicines.push({
+        id: Date.now(),
+        name,
+        dosage: dosage || "1 dose",
+        times,
+        frequency,
+        created: new Date().toISOString()
+      });
+
+      saveData();
+      alert("Medicine added successfully!");
+      clearForm();
+      renderAll();
+    }
+
+    function clearForm() {
+      document.getElementById('name').value = '';
+      document.getElementById('dosage').value = '';
+      document.getElementById('time1').value = '';
+      document.getElementById('time2').value = '';
+    }
+
+    function markTaken(medId, time) {
+      const med = medicines.find(m => m.id === medId);
+      if (!med) return;
+
+      history.unshift({
+        medicine: med.name,
+        dosage: med.dosage,
+        time: time,
+        date: new Date().toLocaleDateString(),
+        timestamp: new Date().toISOString()
+      });
+
+      saveData();
+      renderAll();
+      showNotification(`✅ Taken: \( {med.name}`, ` \){med.dosage} at ${time}`);
+    }
+
+    function renderToday() {
+      const todayList = document.getElementById('todayList');
+      todayList.innerHTML = '';
+
+      const now = new Date();
+      const currentTime = now.toTimeString().slice(0,5);
+
+      let hasReminders = false;
+
+      medicines.forEach(med => {
+        med.times.forEach(time => {
+          const card = document.createElement('div');
+          card.className = 'medicine-card';
+          card.innerHTML = `
+            <strong>${med.name}</strong> - ${med.dosage}<br>
+            <span class="time">${time}</span>
+            <button onclick="markTaken(\( {med.id}, ' \){time}')" style="margin-top:8px; background:#10b981">Mark as Taken</button>
+          `;
+          todayList.appendChild(card);
+          hasReminders = true;
+        });
+      });
+
+      if (!hasReminders) {
+        todayList.innerHTML = '<p>No medicines scheduled for today.</p>';
+      }
+    }
+
+    function renderMedicines() {
+      const list = document.getElementById('medicineList');
+      list.innerHTML = '';
+
+      medicines.forEach((med, index) => {
+        const card = document.createElement('div');
+        card.className = 'medicine-card';
+        card.innerHTML = `
+          <strong>${med.name}</strong> - ${med.dosage}<br>
+          Times: ${med.times.join(', ')}<br>
+          Frequency: ${med.frequency}
+          <button onclick="deleteMedicine(${index})" style="background:#ef4444; margin-top:8px;">Delete</button>
+        `;
+        list.appendChild(card);
+      });
+    }
+
+    function deleteMedicine(index) {
+      if (confirm("Delete this medicine?")) {
+        medicines.splice(index, 1);
+        saveData();
+        renderAll();
+      }
+    }
+
+    function renderHistory() {
+      const list = document.getElementById('historyList');
+      list.innerHTML = '';
+
+      history.forEach(entry => {
+        const div = document.createElement('div');
+        div.className = 'medicine-card log';
+        div.innerHTML = `<strong>${entry.medicine}</strong> - \( {entry.dosage}<br> \){entry.date} at ${entry.time}`;
+        list.appendChild(div);
+      });
+    }
+
+    function renderAll() {
+      renderToday();
+      renderMedicines();
+      renderHistory();
+    }
+
+    function switchTab(n) {
+      document.querySelectorAll('.content').forEach((el, i) => {
+        el.style.display = i === n ? 'block' : 'none';
+      });
+      document.querySelectorAll('.tab').forEach((el, i) => {
+        el.classList.toggle('active', i === n);
+      });
+    }
+
+    // Notification
+    function showNotification(title, body) {
+      if ("Notification" in window && Notification.permission === "granted") {
+        new Notification(title, { body, icon: "💊" });
+      }
+    }
+
+    // Request permission
+    async function requestNotificationPermission() {
+      if ("Notification" in window && Notification.permission === "default") {
+        await Notification.requestPermission();
+      }
+    }
+
+    // Check for due medicines every 30 seconds
+    function checkReminders() {
+      const now = new Date();
+      const current = now.toTimeString().slice(0,5);
+
+      medicines.forEach(med => {
+        if (med.times.includes(current)) {
+          showNotification(`🔔 Time to take medicine!`, `${med.name} - ${med.dosage}`);
+        }
+      });
+    }
+
+    // Initialize
+    window.onload = () => {
+      requestNotificationPermission();
+      renderAll();
+      setInterval(checkReminders, 30000); // Check every 30 seconds
+      setInterval(renderToday, 60000);    // Refresh today every minute
+    };
+  </script>
+</body>
+</html>
