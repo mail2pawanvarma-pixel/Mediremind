@@ -73,7 +73,7 @@
       border-left: 5px solid var(--primary);
     }
     .time {
-      font-size: 1.1em;
+      font-size: 1.2em;
       font-weight: bold;
       color: var(--primary);
     }
@@ -82,6 +82,15 @@
       border-left-color: var(--success);
     }
     .log { font-size: 0.9em; color: #64748b; }
+    .actions {
+      display: flex;
+      gap: 8px;
+      margin-top: 10px;
+    }
+    .btn-small {
+      padding: 8px 12px;
+      font-size: 0.9em;
+    }
   </style>
 </head>
 <body>
@@ -98,29 +107,35 @@
       <div class="tab" onclick="switchTab(3)">History</div>
     </nav>
 
+    <!-- Add Medicine Tab -->
     <div class="content" id="tab0">
-      <h2>Add New Medicine</h2>
+      <h2>Add / Edit Medicine</h2>
+      <input type="hidden" id="editId">
       <input type="text" id="name" placeholder="Medicine Name (e.g. Paracetamol)">
       <input type="text" id="dosage" placeholder="Dosage (e.g. 500mg)">
-      <input type="time" id="time1">
-      <input type="time" id="time2">
+      <label>Reminder Times (add multiple)</label>
+      <input type="time" id="time1" style="margin-bottom:8px">
+      <input type="time" id="time2" style="margin-bottom:8px">
       <select id="frequency">
         <option value="daily">Daily</option>
         <option value="weekly">Weekly</option>
       </select>
-      <button onclick="addMedicine()">Add Medicine</button>
+      <button onclick="saveMedicine()">Save Medicine</button>
     </div>
 
+    <!-- Today Tab -->
     <div class="content" id="tab1" style="display:none">
       <h2>Today's Schedule</h2>
       <div id="todayList"></div>
     </div>
 
+    <!-- My Medicines Tab -->
     <div class="content" id="tab2" style="display:none">
       <h2>My Medicines</h2>
       <div id="medicineList"></div>
     </div>
 
+    <!-- History Tab -->
     <div class="content" id="tab3" style="display:none">
       <h2>History</h2>
       <div id="historyList"></div>
@@ -136,12 +151,13 @@
       localStorage.setItem('history', JSON.stringify(history));
     }
 
-    function addMedicine() {
+    function saveMedicine() {
       const name = document.getElementById('name').value.trim();
       const dosage = document.getElementById('dosage').value.trim();
       const time1 = document.getElementById('time1').value;
       const time2 = document.getElementById('time2').value;
       const frequency = document.getElementById('frequency').value;
+      const editId = parseInt(document.getElementById('editId').value);
 
       if (!name || !time1) {
         alert("Medicine name and at least one time are required!");
@@ -151,19 +167,32 @@
       const times = [time1];
       if (time2) times.push(time2);
 
-      medicines.push({
-        id: Date.now(),
-        name,
-        dosage: dosage || "1 dose",
-        times,
-        frequency,
-        created: new Date().toISOString()
-      });
+      if (editId) {
+        // Update existing
+        const med = medicines.find(m => m.id === editId);
+        if (med) {
+          med.name = name;
+          med.dosage = dosage || "1 dose";
+          med.times = times;
+          med.frequency = frequency;
+        }
+      } else {
+        // Add new
+        medicines.push({
+          id: Date.now(),
+          name,
+          dosage: dosage || "1 dose",
+          times,
+          frequency,
+          created: new Date().toISOString()
+        });
+      }
 
       saveData();
-      alert("Medicine added successfully!");
+      alert(editId ? "Medicine updated!" : "Medicine added successfully!");
       clearForm();
       renderAll();
+      switchTab(2); // Go to My Medicines after save
     }
 
     function clearForm() {
@@ -171,6 +200,29 @@
       document.getElementById('dosage').value = '';
       document.getElementById('time1').value = '';
       document.getElementById('time2').value = '';
+      document.getElementById('editId').value = '';
+    }
+
+    function editMedicine(id) {
+      const med = medicines.find(m => m.id === id);
+      if (!med) return;
+
+      document.getElementById('editId').value = med.id;
+      document.getElementById('name').value = med.name;
+      document.getElementById('dosage').value = med.dosage;
+      document.getElementById('time1').value = med.times[0] || '';
+      document.getElementById('time2').value = med.times[1] || '';
+      document.getElementById('frequency').value = med.frequency || 'daily';
+
+      switchTab(0);
+    }
+
+    function deleteMedicine(id) {
+      if (confirm("Delete this medicine?")) {
+        medicines = medicines.filter(m => m.id !== id);
+        saveData();
+        renderAll();
+      }
     }
 
     function markTaken(medId, time) {
@@ -194,9 +246,6 @@
       const todayList = document.getElementById('todayList');
       todayList.innerHTML = '';
 
-      const now = new Date();
-      const currentTime = now.toTimeString().slice(0,5);
-
       let hasReminders = false;
 
       medicines.forEach(med => {
@@ -206,7 +255,9 @@
           card.innerHTML = `
             <strong>${med.name}</strong> - ${med.dosage}<br>
             <span class="time">${time}</span>
-            <button onclick="markTaken(\( {med.id}, ' \){time}')" style="margin-top:8px; background:#10b981">Mark as Taken</button>
+            <div class="actions">
+              <button onclick="markTaken(\( {med.id}, ' \){time}')" class="btn-small" style="background:#10b981; flex:1">Mark as Taken</button>
+            </div>
           `;
           todayList.appendChild(card);
           hasReminders = true;
@@ -214,7 +265,7 @@
       });
 
       if (!hasReminders) {
-        todayList.innerHTML = '<p>No medicines scheduled for today.</p>';
+        todayList.innerHTML = '<p style="text-align:center; padding:20px;">No medicines scheduled for today.</p>';
       }
     }
 
@@ -222,25 +273,20 @@
       const list = document.getElementById('medicineList');
       list.innerHTML = '';
 
-      medicines.forEach((med, index) => {
+      medicines.forEach(med => {
         const card = document.createElement('div');
         card.className = 'medicine-card';
         card.innerHTML = `
           <strong>${med.name}</strong> - ${med.dosage}<br>
           Times: ${med.times.join(', ')}<br>
           Frequency: ${med.frequency}
-          <button onclick="deleteMedicine(${index})" style="background:#ef4444; margin-top:8px;">Delete</button>
+          <div class="actions">
+            <button onclick="editMedicine(${med.id})" class="btn-small" style="background:#4f46e5">Edit</button>
+            <button onclick="deleteMedicine(${med.id})" class="btn-small" style="background:#ef4444">Delete</button>
+          </div>
         `;
         list.appendChild(card);
       });
-    }
-
-    function deleteMedicine(index) {
-      if (confirm("Delete this medicine?")) {
-        medicines.splice(index, 1);
-        saveData();
-        renderAll();
-      }
     }
 
     function renderHistory() {
@@ -270,38 +316,30 @@
       });
     }
 
-    // Notification
     function showNotification(title, body) {
       if ("Notification" in window && Notification.permission === "granted") {
         new Notification(title, { body, icon: "💊" });
+      } else if ("Notification" in window && Notification.permission === "default") {
+        Notification.requestPermission();
       }
     }
 
-    // Request permission
-    async function requestNotificationPermission() {
-      if ("Notification" in window && Notification.permission === "default") {
-        await Notification.requestPermission();
-      }
-    }
-
-    // Check for due medicines every 30 seconds
     function checkReminders() {
       const now = new Date();
-      const current = now.toTimeString().slice(0,5);
+      const currentTime = now.toTimeString().slice(0,5);
 
       medicines.forEach(med => {
-        if (med.times.includes(current)) {
-          showNotification(`🔔 Time to take medicine!`, `${med.name} - ${med.dosage}`);
+        if (med.times.includes(currentTime)) {
+          showNotification(`🔔 Time to take \( {med.name}`, ` \){med.dosage} at ${currentTime}`);
         }
       });
     }
 
     // Initialize
     window.onload = () => {
-      requestNotificationPermission();
       renderAll();
-      setInterval(checkReminders, 30000); // Check every 30 seconds
-      setInterval(renderToday, 60000);    // Refresh today every minute
+      setInterval(checkReminders, 30000);   // Check every 30 seconds
+      setInterval(renderToday, 60000);      // Refresh today view
     };
   </script>
 </body>
